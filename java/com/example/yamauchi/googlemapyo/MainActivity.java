@@ -1,5 +1,7 @@
 package com.example.yamauchi.googlemapyo;
 
+import android.app.LoaderManager;
+import android.content.Loader;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.Menu;
@@ -8,18 +10,29 @@ import android.view.MenuItem;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
+import com.google.android.gms.maps.model.MarkerOptions;
 
-public class MainActivity extends AppCompatActivity {
+import java.util.HashMap;
+
+public class MainActivity extends AppCompatActivity
+        implements LoaderManager.LoaderCallbacks<String>
+{
 
     // マップオブジェクト（1）
     private GoogleMap googleMap;
+    // マーカーと駅情報のHashMap（1）
+    private HashMap<Marker, EkiInfo> ekiMarkerMap;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        ekiMarkerMap = new HashMap<Marker, EkiInfo>();
 
         // MapFragmentの取得（2）
         MapFragment mapFragment = (MapFragment) getFragmentManager()
@@ -59,6 +72,8 @@ public class MainActivity extends AppCompatActivity {
 
         // 地図の中心を変更する（4）
         googleMap.moveCamera(CameraUpdateFactory.newCameraPosition(camerapos));
+
+        execMoyori();
     }
 
     @Override
@@ -81,5 +96,82 @@ public class MainActivity extends AppCompatActivity {
         }
 
         return super.onOptionsItemSelected(item);
+    }
+
+    // 地図の中心位置を取得して、APIのURLを準備する
+    public void execMoyori() {
+
+        // 地図の中心位置の取得
+        CameraPosition cameraPos = googleMap.getCameraPosition();
+
+        Bundle bundle = new Bundle();
+        // 緯度
+        bundle.putString("y", Double.toString(cameraPos.target.latitude));
+        // 経度
+        bundle.putString("x", Double.toString(cameraPos.target.longitude));
+
+        bundle.putString("moyori",
+                "http://express.heartrails.com/api/json?method=getStations&");
+
+        // LoaderManagerの初期化（1）
+        getLoaderManager().restartLoader(0, bundle, this);
+    }
+
+    @Override
+    public Loader<String> onCreateLoader(int id, Bundle bundle) {
+        HttpAsyncLoader2 loader = null;
+        switch (id) {
+            case 0:
+                // リクエストURLの組み立て
+                String url = bundle.getString("moyori")
+                        + "x=" + bundle.getString("x") + "&"
+                        + "y=" + bundle.getString("y");
+
+                loader = new HttpAsyncLoader2(this, url);
+
+                // Web APIにアクセスする（2）
+                loader.forceLoad();
+                break;
+        }
+        return loader;
+    }
+
+    @Override
+    public void onLoadFinished(Loader<String> loader, String body) {
+        // APIの取得に失敗の場合
+        if (body == null) return;
+
+        switch (loader.getId()) {
+
+            case 0:
+
+                // APIの結果を解析する
+                ParseMoyori parse = new ParseMoyori();
+                parse.loadJson(body);
+
+                // マーカーをいったん削除しておく
+                googleMap.clear();
+                ekiMarkerMap.clear();
+
+                // APIの結果をマーカーに反映する（2）
+                for (EkiInfo e : parse.getEkiinfo()) {
+
+                    Marker marker = googleMap.addMarker(new MarkerOptions()
+                            .position(new LatLng(e.y, e.x))
+                            .title(e.name)
+                            .snippet(e.line)
+                            .icon(BitmapDescriptorFactory
+                                    .fromResource(R.drawable.ic_train))); // （3）
+
+                    // マーカーと駅情報を保管しておく（4）
+                    ekiMarkerMap.put(marker, e);
+                }
+                break;
+        }
+    }
+
+    @Override
+    public void onLoaderReset(Loader<String> loader) {
+
     }
 }

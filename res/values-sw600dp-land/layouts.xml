@@ -1,0 +1,4 @@
+<resources>
+    <item name="main_layout" type="layout">@layout/twopanes</item>
+    <bool name="is_one_pane">false</bool>
+</resources>

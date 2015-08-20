@@ -12,4 +12,9 @@ public class EkiInfo {
     public Double   y;      // 最寄駅の緯度 （世界測地系）
     public int  distance;   // 指定の場所から最寄駅までの距離 （精度は 10 m）
     public String   line;   // 最寄駅の存在する路線名
+
+    @Override
+    public String toString() {
+        return name + "(" + line + ")";
+    }
 }

@@ -1,79 +1,68 @@
 package com.example.yamauchi.googlemapyo;
 
+import android.app.FragmentManager;
+import android.app.FragmentTransaction;
+import android.app.ListFragment;
 import android.app.LoaderManager;
 import android.content.Loader;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
-
-import com.google.android.gms.maps.CameraUpdateFactory;
-import com.google.android.gms.maps.GoogleMap;
-import com.google.android.gms.maps.MapFragment;
-import com.google.android.gms.maps.model.BitmapDescriptorFactory;
-import com.google.android.gms.maps.model.CameraPosition;
-import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.Marker;
-import com.google.android.gms.maps.model.MarkerOptions;
-
-import java.util.HashMap;
+import android.widget.ArrayAdapter;
 
 public class MainActivity extends AppCompatActivity
         implements LoaderManager.LoaderCallbacks<String>
 {
-
-    // マップオブジェクト（1）
-    private GoogleMap googleMap;
-    // マーカーと駅情報のHashMap（1）
-    private HashMap<Marker, EkiInfo> ekiMarkerMap;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setContentView(R.layout.activity_main);
-
-        ekiMarkerMap = new HashMap<Marker, EkiInfo>();
-
-        // MapFragmentの取得（2）
-        MapFragment mapFragment = (MapFragment) getFragmentManager()
-                .findFragmentById(R.id.map);
-
-        try {
-            // マップオブジェクトを取得する（3）
-            googleMap = mapFragment.getMap();
-
-            // Activityが初めて生成されたとき（4）
-            if (savedInstanceState == null) {
-
-                // フラグメントを保存する（5）
-                mapFragment.setRetainInstance(true);
-
-                // 地図の初期設定を行う（6）
-                mapInit();
-            }
-        }
-        // GoogleMapが使用できないとき
-        catch (Exception e) {
-        }
     }
 
-    // 地図の初期設定
-    private void mapInit() {
+    // ListFragmentの表示・非表示、ナビゲーションアイコンの表示を切り替える（1）
+    public void toggleList(boolean hide) {
+        FragmentManager fm = getFragmentManager();
+        FragmentTransaction transaction = fm.beginTransaction(); //（2）
+        ListFragment listFragment =
+                (ListFragment)fm.findFragmentById(R.id.eki_list); //（3）
 
-        // 地図タイプ設定（1）
-        googleMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
+        // 引数のhideがtrueまたはListFragmentが表示されているとき
+        if (hide==true || listFragment.isVisible()) {
+            // ListFragmentを非表示にする
+            transaction.hide(listFragment);
+            // ナビゲーションアイコンを表示する（4）
+            //getActionBar().setDisplayHomeAsUpEnabled(true);
+        }
+        else {
+            // ListFragmentを表示する
+            transaction.show(listFragment);
+            // ナビゲーションアイコンを非表示にする
+            //getActionBar().setDisplayHomeAsUpEnabled(false);
+        }
+        // Fragmentへの操作を確定する
+        transaction.commit(); //（5）
+    }
 
-        // 現在位置ボタンの表示（2）
-        googleMap.setMyLocationEnabled(true);
 
-        // 東京駅の位置、ズーム設定（3）
-        CameraPosition camerapos = new CameraPosition.Builder()
-                .target(new LatLng(35.681382, 139.766084)).zoom(15.5f).build();
+//    @Override
+//    public boolean onMenuItemSelected(int featureId, MenuItem item) {
+//        // 1ペインなら
+//        if (getResources().getBoolean(R.bool.is_one_pane)) {
+//            // アクションバーのアイコンがクリックされたとき（6）
+//            if (android.R.id.home == item.getItemId()) {
+//                toggleList(false);
+//            }
+//        }
+//        return super.onMenuItemSelected(featureId, item);
+//    }
 
-        // 地図の中心を変更する（4）
-        googleMap.moveCamera(CameraUpdateFactory.newCameraPosition(camerapos));
-
-        execMoyori();
+    @Override
+    protected void onResume() { //（7）
+        super.onResume();
+        // 1ペインならListFragmentを非表示、2ペインなら表示する
+        toggleList(getResources().getBoolean(R.bool.is_one_pane));
     }
 
     @Override
@@ -98,24 +87,6 @@ public class MainActivity extends AppCompatActivity
         return super.onOptionsItemSelected(item);
     }
 
-    // 地図の中心位置を取得して、APIのURLを準備する
-    public void execMoyori() {
-
-        // 地図の中心位置の取得
-        CameraPosition cameraPos = googleMap.getCameraPosition();
-
-        Bundle bundle = new Bundle();
-        // 緯度
-        bundle.putString("y", Double.toString(cameraPos.target.latitude));
-        // 経度
-        bundle.putString("x", Double.toString(cameraPos.target.longitude));
-
-        bundle.putString("moyori",
-                "http://express.heartrails.com/api/json?method=getStations&");
-
-        // LoaderManagerの初期化（1）
-        getLoaderManager().restartLoader(0, bundle, this);
-    }
 
     @Override
     public Loader<String> onCreateLoader(int id, Bundle bundle) {
@@ -129,7 +100,7 @@ public class MainActivity extends AppCompatActivity
 
                 loader = new HttpAsyncLoader2(this, url);
 
-                // Web APIにアクセスする（2）
+                // Web APIにアクセスする
                 loader.forceLoad();
                 break;
         }
@@ -138,6 +109,7 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public void onLoadFinished(Loader<String> loader, String body) {
+
         // APIの取得に失敗の場合
         if (body == null) return;
 
@@ -149,22 +121,25 @@ public class MainActivity extends AppCompatActivity
                 ParseMoyori parse = new ParseMoyori();
                 parse.loadJson(body);
 
-                // マーカーをいったん削除しておく
-                googleMap.clear();
-                ekiMarkerMap.clear();
+                FragmentManager fm = getFragmentManager();
+                MyMapFragment mapFragment = (MyMapFragment) fm.findFragmentById(R.id.map);
 
-                // APIの結果をマーカーに反映する（2）
-                for (EkiInfo e : parse.getEkiinfo()) {
+                // マーカーを設定する
+                mapFragment.setMarker(parse);
 
-                    Marker marker = googleMap.addMarker(new MarkerOptions()
-                            .position(new LatLng(e.y, e.x))
-                            .title(e.name)
-                            .snippet(e.line)
-                            .icon(BitmapDescriptorFactory
-                                    .fromResource(R.drawable.ic_train))); // （3）
+                // 駅情報のアダプターを作成する
+                ArrayAdapter<EkiInfo> adapter = new ArrayAdapter<EkiInfo>(this,
+                        android.R.layout.simple_list_item_1,
+                        parse.getEkiinfo());
+                try {
+                    ListFragment listFragment = (ListFragment) fm.findFragmentById(R.id.eki_list);
 
-                    // マーカーと駅情報を保管しておく（4）
-                    ekiMarkerMap.put(marker, e);
+                    // ListFragmentに駅情報のアダプターを設定する
+                    listFragment.setListAdapter(adapter);
+
+                    break;
+                }
+                catch (Exception e) {
                 }
                 break;
         }
